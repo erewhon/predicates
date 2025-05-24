@@ -1,0 +1,3 @@
+rule:
+  op: expr
+  args: "$.foo.bar == 'Hello World' AND $.count > 5"

@@ -1,3 +1,4 @@
+
 """Simple predictates using Pydantic.
 
 Suitable for use in JSON, YAML, or TOML files."""
@@ -6,8 +7,8 @@ from __future__ import annotations
 
 from typing import NamedTuple, Any, Literal, Annotated
 
-import pydash
 import re
+from jsonpath_ng import parse
 from pydantic import BaseModel, Field
 
 
@@ -28,7 +29,8 @@ class Equals(BaseOperator):
     args: PredicateValues
 
     def test(self, o: dict[str, Any]) -> bool:
-        return pydash.get(o, self.args.field) == self.args.value
+        matches = parse('$.' + self.args.field).find(o)
+        return matches and matches[0].value == self.args.value
 
 
 class In(BaseOperator):
@@ -36,8 +38,8 @@ class In(BaseOperator):
     args: PredicateValues
 
     def test(self, o: dict[str, Any]) -> bool:
-        v = pydash.get(o, self.args.field)
-        return v is not None and self.args.value in v
+        matches = parse('$.' + self.args.field).find(o)
+        return matches and self.args.value in matches[0].value
 
 
 class And(BaseOperator):
@@ -118,9 +120,9 @@ class Expr(BaseOperator):
                 except:
                     value = value_str  # Keep as string if eval fails
 
-                # Get the field value from the object
-                # TODO : doesn't handle array access!
-                field_value = pydash.get(o, field)
+                # Get the field value from the object using jsonpath-ng
+                matches = parse('$.' + field).find(o)
+                field_value = matches[0].value if matches else None
 
                 # Apply the IN or NOT IN operator
                 operator = operator.upper()
@@ -144,7 +146,7 @@ class Expr(BaseOperator):
                     return True
 
             # Traditional pattern: $.fieldpath operator value
-            pattern = r'\$\.([\w\.]+)\s*(==|!=|>|<|>=|<=)\s*(.+)'
+            pattern = r'\$\.([\S\.]+)\s*(==|!=|>|<|>=|<=)\s*(.+)'
             match = re.match(pattern, expr)
 
             if not match:
@@ -158,8 +160,9 @@ class Expr(BaseOperator):
             except:
                 evaluated_value = value  # Keep as string if eval fails
 
-            # Get the field value from the object
-            field_value = pydash.get(o, field)
+            # Get the field value from the object using jsonpath-ng
+            matches = parse('$.' + field).find(o)
+            field_value = matches[0].value if matches else None
 
             # Apply the operator
             if operator == "==":

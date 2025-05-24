@@ -1,5 +1,4 @@
-
-"""Simple predictates using Pydantic.
+"""Simple predicates using Pydantic.
 
 Suitable for use in JSON, YAML, or TOML files."""
 
@@ -18,6 +17,17 @@ class PredicateValues(NamedTuple):
 
 
 class BaseOperator(BaseModel):
+    """
+    Represents a base operator used for logical operations.
+
+    This class serves as a base for implementing logical operators like 'equals',
+    'in', 'and', 'or', and 'expr'. It provides a structure for defining specific
+    operations and applying them to provided arguments.
+
+    :ivar op: Specifies the type of operation. Valid values are 'equals', 'in',
+        'and', 'or', and 'expr'.
+    :type op: Literal['equals', 'in', 'and', 'or', 'expr']
+    """
     op: Literal['equals', 'in', 'and', 'or', 'expr']
 
     def test(self, o: dict[str, Any]) -> bool:
@@ -25,6 +35,21 @@ class BaseOperator(BaseModel):
 
 
 class Equals(BaseOperator):
+    """
+    Represents an equality operator used for evaluating specific conditions.
+
+    The Equals operator is a subclass of BaseOperator. This operator compares
+    a specified field's value in an input object against a predefined value.
+    It is designed for use cases where such equality checks are needed. The
+    comparison logic is encapsulated in the `test` method, which performs the
+    field extraction and value comparison using the given PredicateValues.
+
+    :ivar op: The operator type, which is statically set to "equals".
+    :type op: Literal['equals']
+    :ivar args: The predicate values, containing the field to be compared and
+                the value for comparison.
+    :type args: PredicateValues
+    """
     op: Literal['equals'] = 'equals'
     args: PredicateValues
 
@@ -34,6 +59,19 @@ class Equals(BaseOperator):
 
 
 class In(BaseOperator):
+    """
+    Represents an "in" operation used for testing whether a specified value exists
+    within a collection or result of a parsed JSON path.
+
+    This class is used for evaluating predicates where an operation checks if a value
+    (`args.value`) exists in the collection obtained by resolving a specific field
+    (`args.field`) in a given object.
+
+    :ivar op: Literal string identifier for the "in" operation.
+    :type op: Literal['in']
+    :ivar args: Encapsulates the field to be parsed and the value to be checked.
+    :type args: PredicateValues
+    """
     op: Literal['in'] = 'in'
     args: PredicateValues
 
@@ -43,6 +81,22 @@ class In(BaseOperator):
 
 
 class And(BaseOperator):
+    """
+    Represents a logical AND operation for combining multiple conditions.
+
+    This class is used to test whether all the provided conditions in the
+    ``args`` attribute evaluate to true based on the input dictionary.
+    It serves as a composite operator that allows using multiple nested
+    conditions such as ``In``, ``Equals``, other ``And`` operations, or
+    ``Or`` operations.
+
+    :ivar op: A literal indicating the type of logical operator,
+        which is always 'and' for this class.
+    :type op: Literal['and']
+    :ivar args: A list of conditions to be tested. Each item in the list
+        must be an instance of `In`, `Equals`, `And`, or `Or`.
+    :type args: list[In | Equals | And | Or]
+    """
     op: Literal['and'] = 'and'
     args: list[In | Equals | And | Or]
 
@@ -51,6 +105,20 @@ class And(BaseOperator):
 
 
 class Or(BaseOperator):
+    """
+    Represents a logical OR operator used to evaluate a set of conditions.
+
+    The class is designed to evaluate multiple conditions and return True
+    if any of the conditions evaluate to True. It serves as a composite
+    logical operator that can aggregate various conditions, including
+    other composite conditions, for complex logical evaluations.
+
+    :ivar op: Identifier for the OR operator.
+    :type op: Literal['or']
+    :ivar args: A list of conditions that this operator evaluates,
+        which can include instances of `In`, `Equals`, `And`, or other `Or` operators.
+    :type args: list[In | Equals | And | Or]
+    """
     op: Literal['or'] = 'or'
     args: list[In | Equals | And | Or]
 
@@ -59,6 +127,30 @@ class Or(BaseOperator):
 
 
 class Expr(BaseOperator):
+    """
+    Represents an operator for evaluating logical and comparison expressions against an object.
+
+    This class allows the evaluation of complex expressions such as logical
+    and comparison operators, as well as containment checks on attributes of a
+    given object. The expressions support features such as:
+    - Logical operators: AND, OR (case insensitive)
+    - Comparison operators: ==, !=, >, <, >=, <=
+    - Containment operators: IN, NOT IN (case insensitive)
+
+    Expressions are evaluated in the context of a root object, denoted by
+    the `$` symbol, and support path querying using `jsonpath-ng`.
+
+    Examples of valid expressions:
+    - '$.foo == "value" AND $.count > 5'
+    - '$.status == "active" OR $.role == "admin"'
+    - '"World" IN $.tags'
+    - '"admin" NOT IN $.permissions'
+
+    :ivar op: The operator type, always set to 'expr'.
+    :type op: Literal['expr']
+    :ivar args: The logical or comparison expression to be evaluated.
+    :type args: str
+    """
     op: Literal['expr'] = 'expr'
     args: str
 
@@ -210,4 +302,13 @@ OperatorRule = Annotated[Equals | In | And | Or | Expr, Field(discriminator='op'
 
 
 class RuleContainer(BaseModel):
+    """
+    Container class for holding and managing a single rule.
+
+    This class is designed to encapsulate an operator rule and provide a structured
+    way to manage and integrate rules into various systems or workflows.
+
+    :ivar rule: The operator rule being stored and managed in the container.
+    :type rule: OperatorRule
+    """
     rule: OperatorRule

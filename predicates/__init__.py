@@ -60,11 +60,50 @@ class Expr(BaseOperator):
     args: str
 
     def test(self, o: dict[str, Any]) -> bool:
-        # This is unsafe.  Not included in OperatorRule until it's safer.
-        return eval(self.args, {}, o)
+        """
+         Evaluates expressions like '$.foo == "some value"' against the provided object.
+
+         The $ symbol represents the root of the object being tested.
+         Supported operators: ==, !=, >, <, >=, <=
+         """
+        import re
+
+        # Parse expression: $.fieldpath operator value
+        pattern = r'\$\.([\w\.]+)\s*(==|!=|>|<|>=|<=)\s*(.+)'
+        match = re.match(pattern, self.args.strip())
+
+        if not match:
+            raise ValueError(f"Invalid expression format: {self.args}")
+
+        field, operator, value = match.groups()
+
+        # Try to evaluate the value part (handles quoted strings, numbers, etc.)
+        try:
+            evaluated_value = eval(value, {"__builtins__": {}}, {})
+        except:
+            evaluated_value = value  # Keep as string if eval fails
+
+        # Get the field value from the object
+        field_value = pydash.get(o, field)
+
+        # Apply the operator
+        if operator == "==":
+            return field_value == evaluated_value
+        elif operator == "!=":
+            return field_value != evaluated_value
+        elif operator == ">":
+            return field_value > evaluated_value
+        elif operator == "<":
+            return field_value < evaluated_value
+        elif operator == ">=":
+            return field_value >= evaluated_value
+        elif operator == "<=":
+            return field_value <= evaluated_value
+        else:
+            raise ValueError(f"Unsupported operator: {operator}")
 
 
-OperatorRule = Annotated[Equals | In | And | Or, Field(discriminator='op')]
+OperatorRule = Annotated[Equals | In | And | Or | Expr, Field(discriminator='op')]
 
 
 class RuleContainer(BaseModel):

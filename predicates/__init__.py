@@ -7,6 +7,7 @@ from __future__ import annotations
 from typing import NamedTuple, Any, Literal, Annotated
 
 import pydash
+import re
 from pydantic import BaseModel, Field
 
 
@@ -62,15 +63,19 @@ class Expr(BaseOperator):
     def test(self, o: dict[str, Any]) -> bool:
         """
         Evaluates expressions like '$.foo == "some value"' against the provided object.
-        Also supports logical operators AND and OR for combining conditions:
-        '$.foo == "value" AND $.count > 5'
-        '$.status == "active" OR $.role == "admin"'
+        Also supports:
+        - Logical operators: AND, OR (case insensitive)
+        - Comparison operators: ==, !=, >, <, >=, <=
+        - Containment operators: IN, NOT IN (case insensitive)
+
+        Examples:
+        - '$.foo == "value" AND $.count > 5'
+        - '$.status == "active" OR $.role == "admin"'
+        - '"World" IN $.tags'
+        - '"admin" NOT IN $.permissions'
 
         The $ symbol represents the root of the object being tested.
-        Supported comparison operators: ==, !=, >, <, >=, <=
-        Supported logical operators: AND, OR (case insensitive)
         """
-        import re
 
         # Split on AND/OR (but not inside quotes)
         def split_on_logical_ops(expr):
@@ -98,9 +103,49 @@ class Expr(BaseOperator):
 
         # Evaluate a single comparison expression
         def evaluate_comparison(expr):
-            # Parse expression: $.fieldpath operator value
+            expr = expr.strip()
+
+            # Check for "value IN $.field" pattern
+            in_pattern = r'(.+?)\s+(IN|NOT\s+IN)\s+\$\.([\w\.]+)'
+            in_match = re.match(in_pattern, expr, re.IGNORECASE)
+
+            if in_match:
+                value_str, operator, field = in_match.groups()
+
+                # Try to evaluate the value part
+                try:
+                    value = eval(value_str, {"__builtins__": {}}, {})
+                except:
+                    value = value_str  # Keep as string if eval fails
+
+                # Get the field value from the object
+                # TODO : doesn't handle array access!
+                field_value = pydash.get(o, field)
+
+                # Apply the IN or NOT IN operator
+                operator = operator.upper()
+                if operator == "IN":
+                    # Check if field_value is iterable and value is in it
+                    if field_value is not None:
+                        try:
+                            return value in field_value
+                        except TypeError:
+                            # If field_value isn't iterable or doesn't support 'in'
+                            return False
+                    return False
+                elif operator == "NOT IN":
+                    # Check if field_value is iterable and value is not in it
+                    if field_value is not None:
+                        try:
+                            return value not in field_value
+                        except TypeError:
+                            # If field_value isn't iterable or doesn't support 'in'
+                            return True
+                    return True
+
+            # Traditional pattern: $.fieldpath operator value
             pattern = r'\$\.([\w\.]+)\s*(==|!=|>|<|>=|<=)\s*(.+)'
-            match = re.match(pattern, expr.strip())
+            match = re.match(pattern, expr)
 
             if not match:
                 raise ValueError(f"Invalid expression format: {expr}")
